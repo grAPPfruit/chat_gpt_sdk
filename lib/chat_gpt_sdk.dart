@@ -1,8 +1,8 @@
 library chat_gpt_sdk;
 
 export './src/constants.dart';
-export './src/api/endpint.dart';
-export 'src/chat_gpt_api.dart';
+export './src/api/endpoint.dart';
+export 'src/chat_gpt.dart';
 export 'src/model/err_data.dart';
 export 'src/model/complete_req.dart';
 export 'src/model/complete_res.dart';

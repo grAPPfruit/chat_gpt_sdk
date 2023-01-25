@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:chat_gpt_sdk/src/api/endpint.dart';
+
+import 'package:chat_gpt_sdk/src/api/endpoint.dart';
 import 'package:chat_gpt_sdk/src/constants.dart';
 import 'package:chat_gpt_sdk/src/model/ai_model.dart';
 import 'package:chat_gpt_sdk/src/model/complete_req.dart';
@@ -9,57 +10,38 @@ import 'package:chat_gpt_sdk/src/model/complete_res.dart';
 import 'package:chat_gpt_sdk/src/model/engine_model.dart';
 import 'package:chat_gpt_sdk/src/model/generate_image_req.dart';
 import 'package:chat_gpt_sdk/src/model/generate_img_res.dart';
-import 'package:chat_gpt_sdk/src/model/http_setup.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api/intercepter.dart';
+import 'api/auth_header_interceptor.dart';
 
 class ChatGPT {
-  ChatGPT._();
+  ChatGPT(this.dio, this.prefs, this.token) {
+    if (dio.options.baseUrl.isEmpty) {
+      dio.options.baseUrl = kBaseUrl;
+    }
+    if (dio.options.connectTimeout == 0) {
+      dio.options.connectTimeout = 5000;
+    }
+    if (dio.options.sendTimeout == 0) {
+      dio.options.sendTimeout = 5000;
+    }
+    if (dio.options.receiveTimeout == 0) {
+      dio.options.receiveTimeout = 5000;
+    }
 
-  static ChatGPT? _instance;
-  static String? _token;
-  static Dio? _dio;
-  static SharedPreferences? _prefs;
-
-  static ChatGPT get instance => _instance ?? ChatGPT._();
-
-  ///token access OpenAI
-  static get token => _token;
-
-
-  /// ### Build API Token
-  /// @param [token]  token access OpenAI
-  /// generate here https://beta.openai.com/account/api-keys
-  ChatGPT builder(String token, {HttpSetup? baseOption}) {
-    _buildShared();
-    Timer(const Duration(seconds: 1), () {
-      _buildApi(baseOption ?? HttpSetup().getHttpSetup());
-      setToken(token);
-    });
-    return instance;
+    dio.interceptors.add(AuthHeaderInterceptor(prefs));
+    setToken(token);
   }
 
-  ///new instance prefs for keep my data
-  void _buildShared() async {
-    _prefs = await SharedPreferences.getInstance();
-  }
-
-  ///build base api
-  void _buildApi(HttpSetup setup) {
-    _dio = Dio(BaseOptions(
-        sendTimeout: setup.sendTimeout,
-        connectTimeout: setup.connectTimeout,
-        receiveTimeout: setup.receiveTimeout));
-    _dio?.interceptors.add(InterceptorWrapper(_prefs));
-  }
+  final Dio dio;
+  final SharedPreferences prefs;
+  final String token;
 
   /// set new token
-  void setToken(String token) async {
-    _token = token;
-    await _prefs?.setString(kTokenKey, token);
+  Future<void> setToken(String token) async {
+    await prefs.setString(kTokenKey, token);
   }
 
   ///### About Method
@@ -69,13 +51,13 @@ class ChatGPT {
   /// - look more
   /// https://beta.openai.com/examples
   Future<CompleteRes?> onCompleteText({required CompleteReq request}) async {
-    final res = await _dio?.post("$kURL$kCompletion",
+    final res = await dio.post("$kBaseUrl$kCompletion",
         data: json.encode(request.toJson()));
-    if (res?.statusCode != HttpStatus.ok) {
+    if (res.statusCode != HttpStatus.ok) {
       // print(
       //     "complete error: ${res?.statusMessage} code: ${res?.statusCode} data: ${res?.data}");
     }
-    return res?.data == null ? null : CompleteRes.fromJson(res?.data);
+    return res.data == null ? null : CompleteRes.fromJson(res.data);
   }
 
   ///### About Method
@@ -91,9 +73,8 @@ class ChatGPT {
 
   final _completeControl = StreamController<CompleteRes>.broadcast();
   void _completeText({required CompleteReq request}) {
-    _dio
-        ?.post("$kURL$kCompletion",
-            data: json.encode(request.toJson()))
+    dio
+        .post("$kBaseUrl$kCompletion", data: json.encode(request.toJson()))
         .asStream()
         .listen((response) {
       if (response.statusCode != HttpStatus.ok) {
@@ -116,21 +97,21 @@ class ChatGPT {
 
   ///find all list model ai
   Future<AiModel> listModel() async {
-    final res = await _dio?.get("$kURL$kModelList");
-    if (res?.statusCode != HttpStatus.ok) {}
-    return AiModel.fromJson(res?.data);
+    final res = await dio.get("$kBaseUrl$kModelList");
+    if (res.statusCode != HttpStatus.ok) {}
+    return AiModel.fromJson(res.data);
   }
 
   /// find all list engine ai
   Future<EngineModel> listEngine() async {
-    final res = await _dio?.get("$kURL$kEngineList");
-    if (res?.statusCode != HttpStatus.ok) {
+    final res = await dio.get("$kBaseUrl$kEngineList");
+    if (res.statusCode != HttpStatus.ok) {
       if (kDebugMode) {
         print(
-            "error: ${res?.statusMessage} code: ${res?.statusCode} data: ${res?.data}");
+            "error: ${res.statusMessage} code: ${res.statusCode} data: ${res.data}");
       }
     }
-    return EngineModel.fromJson(res?.data);
+    return EngineModel.fromJson(res.data);
   }
 
   ///generate image with prompt
@@ -141,10 +122,10 @@ class ChatGPT {
 
   final _genImgController = StreamController<GenerateImgRes>.broadcast();
   void _generateImage(GenerateImage request) {
-    _dio?.post("$kURL$kGenerateImage",
-        data: json.encode(request.toJson()))
-    .asStream()
-    .listen((response) {
+    dio
+        .post("$kBaseUrl$kGenerateImage", data: json.encode(request.toJson()))
+        .asStream()
+        .listen((response) {
       if (response.statusCode != HttpStatus.ok) {
         _genImgController
           ..sink
@@ -164,9 +145,13 @@ class ChatGPT {
 
   ///generate image with prompt
   Future<GenerateImgRes?> generateImage(GenerateImage request) async {
-    final response = await _dio?.post("$kURL$kGenerateImage",
-    data: json.encode(request.toJson()),);
+    final response = await dio.post(
+      "$kBaseUrl$kGenerateImage",
+      data: json.encode(request.toJson()),
+    );
 
-    return response?.data != null ? GenerateImgRes.fromJson(response?.data): null;
+    return response.data != null
+        ? GenerateImgRes.fromJson(response.data)
+        : null;
   }
 }

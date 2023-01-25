@@ -1,12 +1,13 @@
 const kCompletion = 'completions';
+
 ///get list model
 const kModelList = 'models';
+
 ///get list engine
 const kEngineList = 'engines';
+
 ///generate image with prompt
 const kGenerateImage = 'images/generations';
-
-
 
 ///model name
 const kTranslateModelV3 = 'text-davinci-003';
